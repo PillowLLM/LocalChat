@@ -15,7 +15,7 @@ LocalChater 软件许可协议
 4. 开发团队不对使用本软件造成的任何损失承担责任
 
 联系方式：
-项目主页：https://github.com/Ghenzhiyiya/localchater
+项目主页：https://github.com/yxpillow/localchater
 邮箱：q@cidaiji.com
 
 最后更新：2025年
