@@ -456,12 +456,18 @@ class P2PServer extends EventEmitter {
 
     async start() {
         return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('服务器启动超时'));
+            }, 5000);
+
             this.server = this.app.listen(this.port, () => {
+                clearTimeout(timeout);
                 console.log(`P2P服务器启动在端口 ${this.port}`);
                 resolve(true);
             });
-            
+
             this.server.on('error', (error) => {
+                clearTimeout(timeout);
                 console.error('服务器启动失败:', error);
                 reject(error);
             });

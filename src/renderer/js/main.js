@@ -285,19 +285,6 @@ class P2PChater {
     }
 
     async setupUI() {
-        // 标题栏按钮
-        document.getElementById('minimize-btn').addEventListener('click', () => {
-            ipcRenderer.invoke('minimize-window');
-        });
-
-        document.getElementById('maximize-btn').addEventListener('click', () => {
-            ipcRenderer.invoke('maximize-window');
-        });
-
-        document.getElementById('close-btn').addEventListener('click', () => {
-            ipcRenderer.invoke('close-window');
-        });
-
         // 用户操作按钮
         document.getElementById('edit-nickname-btn').addEventListener('click', () => {
             this.showNicknameModal();
@@ -357,6 +344,12 @@ class P2PChater {
             this.autoResizeTextarea();
         });
 
+        // 拖拽上传
+        this.setupDragAndDrop();
+
+        // 粘贴处理
+        this.setupPasteHandler();
+
         // 模态框事件
         this.setupModalEvents();
     }
@@ -394,6 +387,24 @@ class P2PChater {
         });
         document.getElementById('save-server-settings').addEventListener('click', () => {
             this.saveServerSettings();
+        });
+
+        // 头像裁剪模态框
+        this.setupModal('avatar-crop-modal', 'close-avatar-crop-modal', 'cancel-crop');
+        document.getElementById('crop-rotate-left').addEventListener('click', () => {
+            this.rotateCrop('left');
+        });
+        document.getElementById('crop-rotate-right').addEventListener('click', () => {
+            this.rotateCrop('right');
+        });
+        document.getElementById('crop-zoom').addEventListener('input', (e) => {
+            this.zoomCrop(e.target.value);
+        });
+        document.getElementById('crop-reset').addEventListener('click', () => {
+            this.resetCrop();
+        });
+        document.getElementById('confirm-crop').addEventListener('click', () => {
+            this.confirmCrop();
         });
     }
 
@@ -542,7 +553,7 @@ class P2PChater {
             
             // 如果是当前聊天的用户，更新聊天头部
             if (this.currentPeer && this.currentPeer.id === peerId) {
-                document.querySelector('.chat-avatar').innerHTML = `<i class="${peer.avatar || 'fas fa-user'}"></i>`;
+                document.querySelector('.chat-avatar').innerHTML = this.renderAvatar(peer.avatar, peer.version);
                 document.querySelector('.chat-user-name').textContent = peer.nickname;
             }
             
@@ -575,7 +586,56 @@ class P2PChater {
         }
     }
 
+    detectOS() {
+        const os = require('os');
+        const platform = os.platform();
+        const body = document.body;
+        
+        if (platform === 'darwin') {
+            body.classList.add('mac');
+            body.classList.remove('windows', 'linux');
+        } else if (platform === 'win32') {
+            body.classList.add('windows');
+            body.classList.remove('mac', 'linux');
+        } else {
+            body.classList.add('linux');
+            body.classList.remove('mac', 'windows');
+        }
+        
+        console.log('当前操作系统:', platform);
+    }
+
+    setupTitleBarButtons() {
+        const minimizeBtn = document.getElementById('minimize-btn');
+        const maximizeBtn = document.getElementById('maximize-btn');
+        const closeBtn = document.getElementById('close-btn');
+
+        if (minimizeBtn) {
+            minimizeBtn.addEventListener('click', async () => {
+                await ipcRenderer.invoke('minimize-window');
+            });
+        }
+
+        if (maximizeBtn) {
+            maximizeBtn.addEventListener('click', async () => {
+                await ipcRenderer.invoke('maximize-window');
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', async () => {
+                await ipcRenderer.invoke('close-window');
+            });
+        }
+    }
+
     setupEventListeners() {
+        // 检测操作系统并设置CSS类
+        this.detectOS();
+
+        // 设置自定义标题栏按钮事件（Linux/Windows）
+        this.setupTitleBarButtons();
+
         // 监听窗口关闭事件
         window.addEventListener('beforeunload', () => {
             this.cleanup();
@@ -926,17 +986,357 @@ class P2PChater {
         this.hideModal('nickname-modal');
     }
 
-    async selectAvatar(iconClass) {
-        await this.updateUserInfo({ avatar: iconClass });
+    renderAvatar(avatar, version = '1.0.0') {
+        if (!avatar) return '<i class="fas fa-user"></i>';
         
-        // 更新UI
+        try {
+            const parsedVersion = version.split('.').map(v => parseInt(v) || 0);
+            const isOldVersion = parsedVersion[0] < 2;
+            
+            if (avatar.startsWith('data:') && isOldVersion) {
+                console.log(`老版本 ${version} 不支持base64头像，使用默认头像`);
+                return '<i class="fas fa-user"></i>';
+            }
+            
+            if (avatar.startsWith('data:') || avatar.startsWith('http') || avatar.startsWith('/')) {
+                return `<img src="${avatar}" alt="avatar" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\\'fas fa-user\\'></i>';">`;
+            }
+            
+            return `<i class="${avatar}"></i>`;
+        } catch (error) {
+            console.error('头像解析失败:', error);
+            return '<i class="fas fa-user"></i>';
+        }
+    }
+
+    async selectAvatar(avatarData) {
+        await this.updateUserInfo({ avatar: avatarData });
+
         const avatarEl = document.getElementById('user-avatar');
-        avatarEl.innerHTML = `<i class="${iconClass}"></i>`;
-        
+        avatarEl.innerHTML = this.renderAvatar(avatarData);
+
         this.hideModal('avatar-modal');
     }
 
+    showAvatarModal() {
+        const modal = document.getElementById('avatar-modal');
+        modal.classList.add('show');
+
+        document.querySelectorAll('.avatar-option').forEach(option => {
+            option.classList.toggle('selected', option.dataset.icon === this.localUser.avatar);
+        });
+
+        const customAvatarBtn = document.getElementById('custom-avatar-btn');
+        if (customAvatarBtn) {
+            customAvatarBtn.onclick = () => {
+                this.selectCustomAvatar();
+            };
+        }
+    }
+
+    selectCustomAvatar() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.openCropModal(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        input.click();
+    }
+
+    openCropModal(imageSrc) {
+        this.cropImageSrc = imageSrc;
+        this.cropRotation = 0;
+        this.cropScale = 1;
+        this.cropBoxX = 0;
+        this.cropBoxY = 0;
+        this.isDragging = false;
+        
+        const modal = document.getElementById('avatar-crop-modal');
+        modal.classList.add('show');
+        
+        this.initCropCanvas();
+        this.setupCropBoxDrag();
+    }
+
+    setupCropBoxDrag() {
+        const cropBox = document.getElementById('crop-box');
+        
+        cropBox.addEventListener('mousedown', (e) => {
+            this.isDragging = true;
+            this.dragStartX = e.clientX - cropBox.offsetLeft;
+            this.dragStartY = e.clientY - cropBox.offsetTop;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!this.isDragging) return;
+            
+            const wrapper = document.querySelector('.crop-canvas-wrapper');
+            const cropBox = document.getElementById('crop-box');
+            
+            let newX = e.clientX - this.dragStartX;
+            let newY = e.clientY - this.dragStartY;
+            
+            const maxX = wrapper.clientWidth - cropBox.offsetWidth;
+            const maxY = wrapper.clientHeight - cropBox.offsetHeight;
+            
+            newX = Math.max(0, Math.min(newX, maxX));
+            newY = Math.max(0, Math.min(newY, maxY));
+            
+            cropBox.style.left = newX + 'px';
+            cropBox.style.top = newY + 'px';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            this.isDragging = false;
+        });
+    }
+
+    initCropCanvas() {
+        const canvas = document.getElementById('crop-canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        img.onload = () => {
+            this.cropOriginalImage = img;
+            this.updateCropCanvas();
+        };
+        img.src = this.cropImageSrc;
+    }
+
+    updateCropCanvas() {
+        const canvas = document.getElementById('crop-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!this.cropOriginalImage) return;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((this.cropRotation * Math.PI) / 180);
+        ctx.scale(this.cropScale, this.cropScale);
+        
+        const img = this.cropOriginalImage;
+        let scale = 1;
+        
+        if (img.width > canvas.width) {
+            scale = canvas.width / img.width;
+        }
+        if (img.height * scale > canvas.height) {
+            scale = canvas.height / img.height;
+        }
+        
+        ctx.drawImage(img, -img.width * scale / 2, -img.height * scale / 2, img.width * scale, img.height * scale);
+        
+        ctx.restore();
+        
+        this.updateCropBoxPosition();
+    }
+
+    updateCropBoxPosition() {
+        const canvas = document.getElementById('crop-canvas');
+        const cropBox = document.getElementById('crop-box');
+        const wrapper = document.querySelector('.crop-canvas-wrapper');
+        
+        const boxSize = 150;
+        const posX = (wrapper.clientWidth - boxSize) / 2;
+        const posY = (wrapper.clientHeight - boxSize) / 2;
+        
+        cropBox.style.left = posX + 'px';
+        cropBox.style.top = posY + 'px';
+        cropBox.style.width = boxSize + 'px';
+        cropBox.style.height = boxSize + 'px';
+    }
+
+    rotateCrop(direction) {
+        this.cropRotation += direction === 'left' ? -90 : 90;
+        this.updateCropCanvas();
+    }
+
+    zoomCrop(value) {
+        this.cropScale = parseFloat(value);
+        this.updateCropCanvas();
+    }
+
+    resetCrop() {
+        this.cropRotation = 0;
+        this.cropScale = 1;
+        document.getElementById('crop-zoom').value = 1;
+        this.updateCropCanvas();
+    }
+
+    async confirmCrop() {
+        const canvas = document.getElementById('crop-canvas');
+        const cropBox = document.getElementById('crop-box');
+        const wrapper = document.querySelector('.crop-canvas-wrapper');
+        
+        const boxRect = cropBox.getBoundingClientRect();
+        const wrapperRect = wrapper.getBoundingClientRect();
+        
+        const x = boxRect.left - wrapperRect.left;
+        const y = boxRect.top - wrapperRect.top;
+        const size = cropBox.offsetWidth;
+        
+        const croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = 200;
+        croppedCanvas.height = 200;
+        const ctx = croppedCanvas.getContext('2d');
+        
+        ctx.save();
+        ctx.translate(100, 100);
+        ctx.rotate((this.cropRotation * Math.PI) / 180);
+        ctx.drawImage(canvas, x, y, size, size, -100, -100, 200, 200);
+        ctx.restore();
+        
+        const croppedImage = croppedCanvas.toDataURL('image/png');
+        
+        await this.selectAvatar(croppedImage);
+        this.hideModal('avatar-crop-modal');
+    }
+
+    setupDragAndDrop() {
+        const handleDragOver = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const chatMessages = document.getElementById('chat-messages');
+            const messageInput = document.getElementById('message-input');
+            const inputContainer = document.querySelector('.input-container');
+            
+            if (chatMessages) chatMessages.classList.add('drag-over');
+            if (messageInput) messageInput.classList.add('drag-over');
+            if (inputContainer) inputContainer.classList.add('drag-over');
+        };
+
+        const handleDragLeave = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const chatMessages = document.getElementById('chat-messages');
+            const messageInput = document.getElementById('message-input');
+            const inputContainer = document.querySelector('.input-container');
+            
+            if (chatMessages) chatMessages.classList.remove('drag-over');
+            if (messageInput) messageInput.classList.remove('drag-over');
+            if (inputContainer) inputContainer.classList.remove('drag-over');
+        };
+
+        const handleDrop = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const chatMessages = document.getElementById('chat-messages');
+            const messageInput = document.getElementById('message-input');
+            const inputContainer = document.querySelector('.input-container');
+            
+            if (chatMessages) chatMessages.classList.remove('drag-over');
+            if (messageInput) messageInput.classList.remove('drag-over');
+            if (inputContainer) inputContainer.classList.remove('drag-over');
+
+            if (!this.currentPeer) {
+                this.showNotification('提示', '请先选择一个好友', 'info');
+                return;
+            }
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                for (const file of files) {
+                    await this.sendFileData(file);
+                }
+            }
+        };
+
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.addEventListener('dragover', handleDragOver);
+            chatMessages.addEventListener('dragleave', handleDragLeave);
+            chatMessages.addEventListener('drop', handleDrop);
+        }
+
+
+
+        const inputContainer = document.querySelector('.input-container');
+        if (inputContainer) {
+            inputContainer.addEventListener('dragover', handleDragOver);
+            inputContainer.addEventListener('dragleave', handleDragLeave);
+            inputContainer.addEventListener('drop', handleDrop);
+        }
+    }
+
+    setupPasteHandler() {
+        const messageInput = document.getElementById('message-input');
+        if (!messageInput) return;
+
+        messageInput.addEventListener('paste', async (e) => {
+            const clipboardData = e.clipboardData;
+            if (!clipboardData) return;
+
+            const items = clipboardData.items;
+            if (!items || items.length === 0) return;
+
+            let hasFile = false;
+            let fileToUpload = null;
+
+            for (const item of items) {
+                if (item.kind === 'file') {
+                    hasFile = true;
+                    fileToUpload = item.getAsFile();
+                    break;
+                }
+            }
+
+            if (hasFile && fileToUpload) {
+                e.preventDefault();
+                await this.sendFileData(fileToUpload);
+            }
+        });
+    }
+
+    async sendFileData(file) {
+        if (!this.currentPeer || !this.localUser) {
+            this.showNotification('错误', '请先选择一个好友', 'error');
+            return;
+        }
+
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            
+            // 创建临时文件保存拖拽/粘贴的文件
+            const tempDir = require('os').tmpdir();
+            const tempPath = path.join(tempDir, file.name);
+            
+            // 将文件写入临时目录
+            const arrayBuffer = await file.arrayBuffer();
+            fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
+            
+            // 使用统一的发送逻辑
+            await this.sendFile(tempPath);
+            
+        } catch (error) {
+            console.error('处理文件失败:', error);
+            this.showNotification('错误', '无法处理文件: ' + error.message, 'error');
+        }
+    }
+
     onPeerConnected(peer) {
+        // 检查是否已有相同IP的peer，如果有则删除旧的
+        for (const [existingId, existingPeer] of this.peers) {
+            if (existingPeer.ip === peer.ip && existingId !== peer.id) {
+                console.log(`发现重复IP ${peer.ip}，删除旧的连接`);
+                this.peers.delete(existingId);
+                break;
+            }
+        }
+        
         this.peers.set(peer.id, peer);
         this.updateFriendsList();
         this.showNotification('好友上线', `${peer.nickname} 已连接`, 'info');
@@ -1027,7 +1427,7 @@ class P2PChater {
             
             friendItem.innerHTML = `
                 <div class="friend-avatar">
-                    <i class="${peer.avatar || 'fas fa-user'}"></i>
+                    ${this.renderAvatar(peer.avatar, peer.version)}
                 </div>
                 <div class="friend-info">
                     <div class="friend-name">${peer.nickname}</div>
@@ -1059,7 +1459,7 @@ class P2PChater {
         event.currentTarget.classList.add('active');
         
         // 更新聊天头部
-        document.querySelector('.chat-avatar').innerHTML = `<i class="${peer.avatar || 'fas fa-user'}"></i>`;
+        document.querySelector('.chat-avatar').innerHTML = this.renderAvatar(peer.avatar, peer.version);
         document.querySelector('.chat-user-name').textContent = peer.nickname;
         document.querySelector('.chat-user-status').innerHTML = `
             <span class="status-indicator ${peer.status === 'connected' ? 'online' : 'offline'}"></span>
@@ -1274,7 +1674,7 @@ class P2PChater {
                     </div>
                     <div class="message-content">
                         <div class="file-message" data-file-type="${fileCategory}">
-                                <i class="${fileIcon.class}" style="color: ${fileIcon.color}"></i>
+                                <i class="${fileIcon.class} file-icon"></i>
                                 <div class="file-info">
                                     <div class="file-name" title="${fileInfo.originalName}">${fileInfo.originalName}</div>
                                     <div class="file-size">${this.formatFileSize(fileInfo.size)} • ${fileIcon.type}</div>

@@ -20,26 +20,26 @@
         </div>
     </div>
 
-    <!-- 自定义标题栏 -->
-    <div class="title-bar">
-        <div class="title-bar-left">
-            <i class="fas fa-comments"></i>
-            <span class="app-title">LocalChater</span>
-        </div>
-        <div class="title-bar-right">
-            <button id="minimize-btn" class="title-btn">
-                <i class="fas fa-minus"></i>
-            </button>
-            <button id="maximize-btn" class="title-btn">
-                <i class="fas fa-square"></i>
-            </button>
-            <button id="close-btn" class="title-btn close">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    </div>
-
     <div class="app-container">
+        <!-- 自定义标题栏（Linux/Windows） -->
+        <div class="custom-title-bar" id="custom-title-bar">
+            <div class="title-bar-left">
+                <i class="fas fa-comments"></i>
+                <span class="app-title">LocalChater</span>
+            </div>
+            <div class="title-bar-right">
+                <button class="title-btn minimize-btn" id="minimize-btn" title="最小化">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button class="title-btn maximize-btn" id="maximize-btn" title="最大化">
+                    <i class="fas fa-square"></i>
+                </button>
+                <button class="title-btn close-btn" id="close-btn" title="关闭">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
         <!-- 左侧边栏 -->
         <div class="sidebar">
             <!-- 用户信息 -->
@@ -269,7 +269,48 @@
                     <div class="avatar-option" data-icon="fas fa-crown">
                         <i class="fas fa-crown"></i>
                     </div>
+                    <div class="avatar-option custom-avatar" id="custom-avatar-btn" data-icon="custom">
+                        <i class="fas fa-image"></i>
+                    </div>
                 </div>
+                <p style="text-align: center; color: #666; margin-top: 10px; font-size: 12px;">点击图片图标选择本地图片作为头像</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 头像裁剪模态框 -->
+    <div id="avatar-crop-modal" class="modal">
+        <div class="modal-content" style="width: 600px;">
+            <div class="modal-header">
+                <h3>裁剪头像</h3>
+                <button id="close-avatar-crop-modal" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="crop-container">
+                    <div class="crop-canvas-wrapper">
+                        <canvas id="crop-canvas"></canvas>
+                        <div class="crop-overlay"></div>
+                        <div class="crop-box" id="crop-box"></div>
+                    </div>
+                </div>
+                <div class="crop-controls">
+                    <button id="crop-rotate-left" class="crop-btn">
+                        <i class="fas fa-rotate-left"></i>
+                    </button>
+                    <button id="crop-rotate-right" class="crop-btn">
+                        <i class="fas fa-rotate-right"></i>
+                    </button>
+                    <input type="range" id="crop-zoom" min="1" max="5" step="0.1" value="1">
+                    <button id="crop-reset" class="crop-btn">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-crop" class="secondary-btn">取消</button>
+                <button id="confirm-crop" class="primary-btn">确定裁剪</button>
             </div>
         </div>
     </div>
