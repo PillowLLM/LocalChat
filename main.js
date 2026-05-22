@@ -9,6 +9,7 @@ class LocalChaterApp {
         this.p2pServer = null;
         this.tray = null;
         this.isDev = process.argv.includes('--dev');
+        this.localUser = { port: 8888 };
     }
 
     async init() {
@@ -41,16 +42,15 @@ class LocalChaterApp {
             minWidth: 800,
             minHeight: 600,
             frame: false,
-            titleBarStyle: 'hidden',
-            show: false, // 初始不显示窗口
-            backgroundColor: '#667eea', // 设置背景色匹配应用主题
+            show: false,
+            backgroundColor: '#f5f7fa',
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: false,
                 enableRemoteModule: true,
-                webSecurity: false, // 禁用web安全以减少GPU相关问题
-                experimentalFeatures: false, // 禁用实验性功能
-                backgroundThrottling: false // 禁用后台节流
+                webSecurity: false,
+                experimentalFeatures: false,
+                backgroundThrottling: false
             },
             icon: path.join(__dirname, 'assets/icon.png')
         });
@@ -90,7 +90,42 @@ class LocalChaterApp {
             console.log('页面恢复响应');
         });
 
+        // 阻止Electron原生打开拖拽文件
+        this.mainWindow.webContents.on('will-navigate', (event, url) => {
+            if (url.startsWith('file://')) {
+                event.preventDefault();
+                console.log('阻止了原生文件打开:', url);
+            }
+        });
+
+        // 允许拖放事件传递到渲染进程处理
+        this.mainWindow.webContents.on('drop', (event) => {
+            event.preventDefault();
+        });
+
+        this.mainWindow.webContents.on('dragover', (event) => {
+            event.preventDefault();
+        });
+
+        this.mainWindow.webContents.on('dragenter', (event) => {
+            event.preventDefault();
+        });
+
+        this.mainWindow.webContents.on('dragleave', (event) => {
+            event.preventDefault();
+        });
+
         this.mainWindow.loadFile('src/renderer/index.html');
+
+        this.mainWindow.on('minimize', () => {
+            console.log('窗口最小化，停止服务器');
+            this.stopP2PServer();
+        });
+
+        this.mainWindow.on('restore', () => {
+            console.log('窗口恢复，重新启动服务器');
+            this.startP2PServer(this.localUser?.port || 8888);
+        });
     }
 
     // 窗口显示动画方法
@@ -666,6 +701,10 @@ class LocalChaterApp {
     async startP2PServer(port = 8888) {
         try {
             if (this.p2pServer) {
+                if (this.p2pServer.server && this.p2pServer.server.listening) {
+                    console.log('P2P服务器已经在运行中');
+                    return true;
+                }
                 await this.stopP2PServer();
             }
 
@@ -697,6 +736,7 @@ class LocalChaterApp {
             });
 
             await this.p2pServer.start();
+            this.localUser.port = port;
             console.log(`P2P服务器启动在端口 ${port}`);
             return true;
         } catch (error) {
