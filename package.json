@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "node --test --test-force-exit tests/"
   },
   "keywords": ["electron", "chat", "lan", "file-transfer"],
   "author": "LocalChater",
