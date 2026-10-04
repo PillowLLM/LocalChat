@@ -166,3 +166,15 @@ MIT License - 详见 LICENSE 文件
 ---
 
 **LocalChater** - 让局域网聊天变得简单有趣！
+
+---
+
+<div align="center">
+
+<a href="https://github.com/PillowLLM/LocalChat">
+  <img width="100%" src="https://alittlecatgirlpanel.yxp.hk/card?repo=PillowLLM/LocalChat" alt="gh-card · PillowLLM/LocalChat" />
+</a>
+
+<sub>Powered by <a href="https://alittlecatgirlpanel.yxp.hk"><b>gh-card</b></a> · 粉色手写体 README 仓库名片</sub>
+
+</div>
